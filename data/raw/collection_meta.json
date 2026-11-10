@@ -1,0 +1,62 @@
+{
+  "source": "NBA official stats API (stats.nba.com) via nba_api",
+  "package": "nba_api",
+  "as_of_hkt": "2026-11-10 12:08:14 UTC+08:00",
+  "as_of_iso": "2026-11-10T12:08:14.392030+08:00",
+  "seasons": {
+    "2021-22": {
+      "team_games": 2460,
+      "games": 1230,
+      "teams": 30,
+      "min_date": "2021-10-19",
+      "max_date": "2022-04-10"
+    },
+    "2022-23": {
+      "team_games": 2460,
+      "games": 1230,
+      "teams": 30,
+      "min_date": "2022-10-18",
+      "max_date": "2023-04-09"
+    },
+    "2023-24": {
+      "team_games": 2460,
+      "games": 1230,
+      "teams": 30,
+      "min_date": "2023-10-24",
+      "max_date": "2024-04-14"
+    },
+    "2024-25": {
+      "team_games": 2460,
+      "games": 1230,
+      "teams": 30,
+      "min_date": "2024-10-22",
+      "max_date": "2025-04-13"
+    },
+    "2025-26": {
+      "team_games": 2460,
+      "games": 1230,
+      "teams": 30,
+      "min_date": "2025-10-21",
+      "max_date": "2026-04-12"
+    },
+    "2026-27": {
+      "team_games": 308,
+      "games": 154,
+      "teams": 30,
+      "min_date": "2026-10-20",
+      "max_date": "2026-11-09"
+    }
+  },
+  "current_schedule_season": "2026-27",
+  "notes": "Regular-season LeagueGameLog only (season type = Regular Season). Schedule includes preseason (game ID prefix 001) and regular season (002). No scores or games were fabricated.",
+  "schedule_regular": {
+    "n": 1206,
+    "status_counts": {
+      "1": 1052,
+      "3": 152,
+      "2": 2
+    },
+    "min_date": "2026-10-20",
+    "max_date": "2027-04-11"
+  }
+}
