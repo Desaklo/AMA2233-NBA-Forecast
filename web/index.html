@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NBA Match Outcome Forecast · AMA2233</title>
+  <meta name="description" content="Pre-game win-probability estimates for NBA matchups. AMA2233 Data Analytics and Visualization course project." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600;6..72,700&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect fill='%230072B2' width='64' height='64' rx='8'/%3E%3Ccircle cx='32' cy='32' r='14' fill='none' stroke='%23F3EFE6' stroke-width='4'/%3E%3C/svg%3E" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div>
+        <p class="eyebrow">AMA2233 · Data Analytics and Visualization</p>
+        <h1>NBA Match Outcome Forecast</h1>
+        <p class="tagline">Pre-game win probabilities from a leakage-free logistic model, with a random-forest comparison.</p>
+      </div>
+      <div class="header-meta" id="header-meta"></div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel" aria-labelledby="upcoming-heading">
+      <div class="panel-head">
+        <h2 id="upcoming-heading">Upcoming and in-progress games</h2>
+        <p class="muted" id="upcoming-note">Click a game to load the matchup. Estimates use only information known before tip-off.</p>
+      </div>
+      <div class="game-strip" id="game-strip" role="list"></div>
+    </section>
+
+    <section class="panel predict-panel" aria-labelledby="predict-heading">
+      <div class="panel-head">
+        <h2 id="predict-heading">Select a matchup</h2>
+        <p class="muted">Any home and away pair can be scored from current form. If the pair is on the upcoming schedule, rest days follow the scheduled date.</p>
+      </div>
+
+      <div class="selectors">
+        <div class="team-pick">
+          <label for="away-select">Away</label>
+          <div class="select-row">
+            <span class="color-chip" id="away-chip" aria-hidden="true"></span>
+            <select id="away-select"></select>
+          </div>
+          <p class="record" id="away-record"></p>
+        </div>
+        <div class="at-col">
+          <span class="at-mark">@</span>
+          <button type="button" class="swap-btn" id="swap-btn" title="Swap home and away">Swap</button>
+        </div>
+        <div class="team-pick">
+          <label for="home-select">Home</label>
+          <div class="select-row">
+            <span class="color-chip" id="home-chip" aria-hidden="true"></span>
+            <select id="home-select"></select>
+          </div>
+          <p class="record" id="home-record"></p>
+        </div>
+        <fieldset class="model-toggle">
+          <legend>Model</legend>
+          <label class="seg">
+            <input type="radio" name="model" value="lr" checked />
+            <span>Logistic regression</span>
+          </label>
+          <label class="seg">
+            <input type="radio" name="model" value="rf" />
+            <span>Random forest</span>
+          </label>
+        </fieldset>
+      </div>
+
+      <div class="hero" id="hero">
+        <p class="estimate-label" id="hero-context"></p>
+        <p class="winner-line" id="winner-line"></p>
+        <div class="prob-bar" id="prob-bar" aria-hidden="true">
+          <div class="prob-away" id="prob-away-fill"></div>
+          <div class="prob-home" id="prob-home-fill"></div>
+        </div>
+        <div class="prob-labels">
+          <div class="prob-lab away">
+            <span class="who" id="away-who"></span>
+            <span class="pct" id="away-pct"></span>
+          </div>
+          <div class="prob-lab home">
+            <span class="who" id="home-who"></span>
+            <span class="pct" id="home-pct"></span>
+          </div>
+        </div>
+        <p class="muted fineprint" id="hero-note"></p>
+      </div>
+    </section>
+
+    <section class="panel charts-panel" aria-labelledby="charts-heading">
+      <div class="panel-head">
+        <h2 id="charts-heading">Charts</h2>
+      </div>
+      <div class="chart-tabs" role="tablist" aria-label="Chart type">
+        <button type="button" class="tab is-active" role="tab" aria-selected="true" data-chart="prob">Win probability</button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-chart="form">Recent form</button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-chart="why">Why this prediction</button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-chart="cal">Calibration</button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-chart="traj">Season trajectory</button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-chart="cmp">Team comparison</button>
+      </div>
+      <div class="chart-sub" id="chart-sub" hidden></div>
+      <div id="chart" class="chart" role="img" aria-label="Selected chart"></div>
+      <div id="form-strip" class="form-strip" hidden></div>
+      <p class="muted chart-caption" id="chart-caption"></p>
+    </section>
+
+    <section class="panel methods" aria-labelledby="methods-heading">
+      <h2 id="methods-heading">How the estimates are made</h2>
+      <div class="methods-grid">
+        <div>
+          <h3>No leakage</h3>
+          <p>Every feature is known before tip-off: rest and back-to-backs, pre-game season win percentage and point differential, last-5 and last-10 form, offensive and defensive ratings, and home/road splits. Same-game box scores are never used as inputs.</p>
+        </div>
+        <div>
+          <h3>Temporal split</h3>
+          <p>Models are trained on the 2021–22 through 2024–25 regular seasons (4,920 games). 2025–26 is held out for testing. 2026–27 games are a forward application and were not used to fit or tune the models.</p>
+        </div>
+        <div>
+          <h3>Two models</h3>
+          <p>Logistic regression (L2-regularized, the default) is the interpretable linear model from the course syllabus. A random forest is shown as a comparison. Both are scored with accuracy, log-loss, and the Brier score against home-court and win-percentage baselines.</p>
+        </div>
+        <div>
+          <h3>What is missing</h3>
+          <p>Injuries, travel, roster changes, and referees are not in the model. Early-season estimates are noisier because there is little in-season history. These are educational estimates, not betting advice.</p>
+        </div>
+      </div>
+      <div class="metrics-inline" id="metrics-inline"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner" id="footer"></div>
+  </footer>
+
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
