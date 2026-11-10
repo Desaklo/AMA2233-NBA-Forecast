@@ -1,186 +1,186 @@
 [
   {
-    "feature": "home_l10_pd",
-    "label": "Home last-10 point differential",
-    "coef": 0.25437925409618845,
-    "odds_ratio": 1.2896608206801408,
-    "train_mean": -0.05919581618655692,
-    "train_scale": 6.9877188481182575
+    "feature": "home_pd",
+    "label": "Home season point differential",
+    "coef": 0.2873865465919242,
+    "odds_ratio": 1.3329393570714785,
+    "train_mean": -0.03436666422790471,
+    "train_scale": 5.6648755387579275
   },
   {
     "feature": "away_l10_pd",
     "label": "Away last-10 point differential",
-    "coef": -0.24457470901814304,
-    "odds_ratio": 0.7830374862183084,
-    "train_mean": 0.08904076033705663,
+    "coef": -0.1323487270083855,
+    "odds_ratio": 0.876035444585785,
+    "train_mean": 0.08904076033705664,
     "train_scale": 7.147609601449868
   },
   {
-    "feature": "home_l10_win_pct",
-    "label": "Home last-10 win %",
-    "coef": -0.20006545774174056,
-    "odds_ratio": 0.818677162565768,
-    "train_mean": 0.497877306749258,
-    "train_scale": 0.21649365758421757
+    "feature": "away_pd",
+    "label": "Away season point differential",
+    "coef": -0.11874293182812713,
+    "odds_ratio": 0.8880360572277456,
+    "train_mean": 0.07725647521311813,
+    "train_scale": 5.75508415296523
+  },
+  {
+    "feature": "home_b2b",
+    "label": "Home on a back-to-back",
+    "coef": -0.10803899796521436,
+    "odds_ratio": 0.8975925914632195,
+    "train_mean": 0.15508130081300814,
+    "train_scale": 0.361982169382904
+  },
+  {
+    "feature": "home_home_split",
+    "label": "Home team's home-court win %",
+    "coef": 0.10088080143148062,
+    "odds_ratio": 1.1061447830301812,
+    "train_mean": 0.5612660069045508,
+    "train_scale": 0.21333463136817274
   },
   {
     "feature": "away_l10_off_rtg",
     "label": "Away last-10 offensive rating",
-    "coef": -0.1865445307117734,
-    "odds_ratio": 0.829821608581697,
+    "coef": -0.09963424719717517,
+    "odds_ratio": 0.9051684253874502,
     "train_mean": 110.0218456702401,
-    "train_scale": 4.637385442660263
+    "train_scale": 4.637385442660262
+  },
+  {
+    "feature": "home_l10_pd",
+    "label": "Home last-10 point differential",
+    "coef": 0.09190012920446836,
+    "odds_ratio": 1.0962553327213285,
+    "train_mean": -0.05919581618655692,
+    "train_scale": 6.9877188481182575
+  },
+  {
+    "feature": "away_b2b",
+    "label": "Away on a back-to-back",
+    "coef": 0.08799948530330841,
+    "odds_ratio": 1.0919875599856683,
+    "train_mean": 0.18963414634146342,
+    "train_scale": 0.39201152646677095
   },
   {
     "feature": "away_l10_def_rtg",
     "label": "Away last-10 defensive rating",
-    "coef": 0.16788249514633236,
-    "odds_ratio": 1.1827976180207926,
+    "coef": 0.0765226174092052,
+    "odds_ratio": 1.0795266061560524,
     "train_mean": 109.95095580528842,
     "train_scale": 4.396076378744998
   },
   {
-    "feature": "away_l10_win_pct",
-    "label": "Away last-10 win %",
-    "coef": 0.16164284454395816,
-    "odds_ratio": 1.1754403514077194,
-    "train_mean": 0.5027395470383275,
-    "train_scale": 0.21884924966293487
+    "feature": "away_away_split",
+    "label": "Away team's road win %",
+    "coef": -0.07600741906513378,
+    "odds_ratio": 0.9268093304750858,
+    "train_mean": 0.4376183999424515,
+    "train_scale": 0.19816549628250962
+  },
+  {
+    "feature": "home_prior_games",
+    "label": "Home games already played",
+    "coef": -0.05000442028843066,
+    "odds_ratio": 0.9512252198015869,
+    "train_mean": 40.5020325203252,
+    "train_scale": 23.676786939348425
   },
   {
     "feature": "home_l10_off_rtg",
     "label": "Home last-10 offensive rating",
-    "coef": 0.1529499558760767,
-    "odds_ratio": 1.1652666627342847,
+    "coef": 0.04982526079879546,
+    "odds_ratio": 1.0510874141531037,
     "train_mean": 109.94117142851142,
     "train_scale": 4.674519478224778
   },
   {
     "feature": "home_l10_def_rtg",
     "label": "Home last-10 defensive rating",
-    "coef": -0.13637953456951624,
-    "odds_ratio": 0.8725114213929485,
+    "coef": -0.04672458462728688,
+    "odds_ratio": 0.9543502041153966,
     "train_mean": 109.92195962579605,
     "train_scale": 4.394076704705741
   },
   {
-    "feature": "home_b2b",
-    "label": "Home on a back-to-back",
-    "coef": -0.12657785740552027,
-    "odds_ratio": 0.8811055462810912,
-    "train_mean": 0.15508130081300814,
-    "train_scale": 0.361982169382904
-  },
-  {
-    "feature": "home_win_pct",
-    "label": "Home season win % (pre-game)",
-    "coef": 0.12248255370062758,
-    "odds_ratio": 1.1302994003602744,
-    "train_mean": 0.49896789308359796,
-    "train_scale": 0.175582468222012
-  },
-  {
-    "feature": "home_home_split",
-    "label": "Home team's home-court win %",
-    "coef": 0.11150931590842086,
-    "odds_ratio": 1.1179641588087403,
-    "train_mean": 0.5612660069045508,
-    "train_scale": 0.21333463136817274
-  },
-  {
-    "feature": "away_b2b",
-    "label": "Away on a back-to-back",
-    "coef": 0.1017835382032958,
-    "odds_ratio": 1.1071437914537499,
-    "train_mean": 0.18963414634146342,
-    "train_scale": 0.39201152646677095
-  },
-  {
-    "feature": "away_away_split",
-    "label": "Away team's road win %",
-    "coef": -0.09590651345205155,
-    "odds_ratio": 0.9085489492034947,
-    "train_mean": 0.4376183999424515,
-    "train_scale": 0.19816549628250962
-  },
-  {
-    "feature": "home_pd",
-    "label": "Home season point differential",
-    "coef": 0.08051493616667357,
-    "odds_ratio": 1.0838450350114457,
-    "train_mean": -0.034366664227904686,
-    "train_scale": 5.6648755387579275
-  },
-  {
-    "feature": "away_l5_win_pct",
-    "label": "Away last-5 win %",
-    "coef": -0.070838098076116,
-    "odds_ratio": 0.9316127098084591,
-    "train_mean": 0.5012940379403794,
-    "train_scale": 0.26421129292410517
-  },
-  {
-    "feature": "home_prior_games",
-    "label": "Home games already played",
-    "coef": -0.06780555548805615,
-    "odds_ratio": 0.9344421530617436,
-    "train_mean": 40.5020325203252,
-    "train_scale": 23.676786939348425
-  },
-  {
-    "feature": "home_l5_win_pct",
-    "label": "Home last-5 win %",
-    "coef": 0.05766637578436923,
-    "odds_ratio": 1.0593615080953445,
-    "train_mean": 0.4990921409214092,
-    "train_scale": 0.2629248617538823
-  },
-  {
-    "feature": "away_rest_days",
-    "label": "Away rest days",
-    "coef": -0.04850936686079962,
-    "odds_ratio": 0.9526484159389399,
-    "train_mean": 2.1384146341463413,
-    "train_scale": 1.0949569945657425
-  },
-  {
-    "feature": "away_win_pct",
-    "label": "Away season win % (pre-game)",
-    "coef": -0.047913256806934736,
-    "odds_ratio": 0.953216468531589,
-    "train_mean": 0.502468688187794,
-    "train_scale": 0.17722976595621348
-  },
-  {
-    "feature": "home_rest_days",
-    "label": "Home rest days",
-    "coef": 0.037506546598416825,
-    "odds_ratio": 1.0382187938610894,
-    "train_mean": 2.2278455284552847,
-    "train_scale": 1.1274102602148557
-  },
-  {
     "feature": "is_neutral",
     "label": "Neutral-site game",
-    "coef": -0.02482613550744022,
-    "odds_ratio": 0.9754794985333846,
+    "coef": 0.0,
+    "odds_ratio": 1.0,
     "train_mean": 0.0010162601626016261,
     "train_scale": 0.03186263294022537
   },
   {
-    "feature": "away_prior_games",
-    "label": "Away games already played",
-    "coef": -0.02204257522284457,
-    "odds_ratio": 0.978198587141798,
-    "train_mean": 40.4979674796748,
-    "train_scale": 23.66241221782813
+    "feature": "home_rest_days",
+    "label": "Home rest days",
+    "coef": 0.0,
+    "odds_ratio": 1.0,
+    "train_mean": 2.2278455284552847,
+    "train_scale": 1.1274102602148557
   },
   {
-    "feature": "away_pd",
-    "label": "Away season point differential",
-    "coef": 0.012708506723013118,
-    "odds_ratio": 1.0127896029678398,
-    "train_mean": 0.07725647521311813,
-    "train_scale": 5.75508415296523
+    "feature": "away_rest_days",
+    "label": "Away rest days",
+    "coef": 0.0,
+    "odds_ratio": 1.0,
+    "train_mean": 2.1384146341463413,
+    "train_scale": 1.0949569945657425
+  },
+  {
+    "feature": "home_win_pct",
+    "label": "Home season win % (pre-game)",
+    "coef": 0.0,
+    "odds_ratio": 1.0,
+    "train_mean": 0.49896789308359796,
+    "train_scale": 0.175582468222012
+  },
+  {
+    "feature": "away_win_pct",
+    "label": "Away season win % (pre-game)",
+    "coef": 0.0,
+    "odds_ratio": 1.0,
+    "train_mean": 0.502468688187794,
+    "train_scale": 0.1772297659562135
+  },
+  {
+    "feature": "home_l10_win_pct",
+    "label": "Home last-10 win %",
+    "coef": 0.0,
+    "odds_ratio": 1.0,
+    "train_mean": 0.497877306749258,
+    "train_scale": 0.21649365758421757
+  },
+  {
+    "feature": "away_l10_win_pct",
+    "label": "Away last-10 win %",
+    "coef": 0.0,
+    "odds_ratio": 1.0,
+    "train_mean": 0.5027395470383275,
+    "train_scale": 0.21884924966293487
+  },
+  {
+    "feature": "home_l5_win_pct",
+    "label": "Home last-5 win %",
+    "coef": 0.0,
+    "odds_ratio": 1.0,
+    "train_mean": 0.4990921409214092,
+    "train_scale": 0.2629248617538823
+  },
+  {
+    "feature": "away_l5_win_pct",
+    "label": "Away last-5 win %",
+    "coef": 0.0,
+    "odds_ratio": 1.0,
+    "train_mean": 0.5012940379403794,
+    "train_scale": 0.26421129292410517
+  },
+  {
+    "feature": "away_prior_games",
+    "label": "Away games already played",
+    "coef": 0.0,
+    "odds_ratio": 1.0,
+    "train_mean": 40.4979674796748,
+    "train_scale": 23.66241221782813
   }
 ]

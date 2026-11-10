@@ -72,3 +72,18 @@ previews/                  # static screenshots of the site
 - **Models**: L2 logistic regression and a random forest. Metrics: accuracy, log-loss, Brier score, plus a reliability diagram.
 
 See `RESULTS.md` for the numbers and `DATA_SOURCES.md` for the source.
+
+## Notebook, course models and season forecast
+
+- `notebooks/AMA2233_NBA_Forecast.ipynb` reproduces the whole analysis and contains the visualization code
+  (exploration, correlation heatmap, VIF, PCA, cross-validation curves, model comparison, confusion matrix,
+  calibration, odds ratios, decision tree, season simulation). Figures are saved to `figures/`.
+  Run it with `jupyter notebook notebooks/AMA2233_NBA_Forecast.ipynb`.
+- Default model: Lasso (L1) logistic regression. It removes the redundant, highly correlated features
+  (see "Multicollinearity" in `RESULTS.md`). Comparison models: L2 logistic, PCA + logistic, decision tree,
+  k-NN, Gaussian Naive Bayes, random forest.
+- Hyperparameters: rolling-origin cross-validation inside the training window
+  (train on seasons up to k, validate on season k+1). The 2025-26 test season is never used for tuning.
+- `scripts/simulate_season.py` runs a 20,000-season Monte Carlo of the remaining 2026-27 schedule, the play-in and
+  the playoffs. The website shows the projected conference tables and the conference / championship odds.
+  It is called automatically by `scripts/train_and_export.py`.

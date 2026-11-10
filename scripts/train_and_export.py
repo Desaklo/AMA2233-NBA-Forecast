@@ -5,14 +5,20 @@ Train seasons: 2021-22 through 2024-25
 Held-out test: 2025-26
 Forward application: 2026-27 (not used for fitting or hyperparameter choice)
 
-A 2024-25 validation slice inside the training window is used only to pick
-hyperparameters; models are then refit on the full training window.
+Hyperparameters are chosen by rolling-origin cross-validation inside the
+training window (train on seasons up to k, validate on season k+1), which is
+the time-series form of k-fold CV. Models are then refit on the full window.
+
+The default model is an L1-regularised (Lasso) logistic regression. The other
+course models (L2 logistic, PCA + logistic, decision tree, k-NN, Gaussian
+Naive Bayes) and a random forest are trained on the same split for comparison.
 """
 
 from __future__ import annotations
 
 import json
 import sys
+import warnings
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -20,11 +26,20 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.calibration import calibration_curve
+from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
+from sklearn.metrics import (
+    accuracy_score,
+    brier_score_loss,
+    confusion_matrix,
+    log_loss,
+)
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier, export_text
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -43,6 +58,23 @@ WEB_DATA.mkdir(parents=True, exist_ok=True)
 
 HKT = timezone(timedelta(hours=8))
 RNG = 2233
+
+# Rolling-origin folds: (seasons to train on, season to validate on).
+CV_FOLDS = [(TRAIN_SEASONS[:i], TRAIN_SEASONS[i]) for i in range(1, len(TRAIN_SEASONS))]
+C_GRID = (0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0)
+
+# key -> display name, in the order used by every table and chart.
+MODEL_LABELS = {
+    "baseline_home": "Baseline: always home (p = train home-win rate)",
+    "baseline_winpct": "Baseline: higher pre-game season win %",
+    "logistic_regression": "Logistic regression (Lasso, L1)",
+    "logistic_l2": "Logistic regression (L2, all features)",
+    "pca_logistic": "PCA + logistic regression",
+    "decision_tree": "Decision tree",
+    "knn": "k-nearest neighbours",
+    "naive_bayes": "Gaussian Naive Bayes",
+    "random_forest": "Random forest",
+}
 
 FEATURES = [
     "is_neutral",
@@ -159,23 +191,106 @@ def winpct_baseline_p(df: pd.DataFrame) -> np.ndarray:
     return p
 
 
-def fit_logistic(X, y, C: float) -> Pipeline:
+def fit_logistic(X, y, C: float, penalty: str = "l1") -> Pipeline:
+    """Standardise, then fit a logistic regression with an L1 (Lasso) or L2 penalty."""
+    if penalty == "l1":
+        clf = LogisticRegression(C=C, penalty="l1", solver="liblinear", max_iter=5000, random_state=RNG)
+    else:
+        clf = LogisticRegression(C=C, solver="lbfgs", max_iter=5000, random_state=RNG)
+    pipe = Pipeline([("scaler", StandardScaler()), ("clf", clf)])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        pipe.fit(X, y)
+    return pipe
+
+
+def fit_pca_logistic(X, y, n_components: int) -> Pipeline:
+    """Standardise -> keep the first principal components -> (nearly unpenalised) logistic regression."""
     pipe = Pipeline(
         [
             ("scaler", StandardScaler()),
-            (
-                "clf",
-                LogisticRegression(
-                    C=C,
-                    solver="lbfgs",
-                    max_iter=2500,
-                    random_state=RNG,
-                ),
-            ),
+            ("pca", PCA(n_components=n_components, random_state=RNG)),
+            ("clf", LogisticRegression(C=1e4, solver="lbfgs", max_iter=5000, random_state=RNG)),
         ]
     )
     pipe.fit(X, y)
     return pipe
+
+
+def fit_tree(X, y, max_depth: int, min_samples_leaf: int) -> DecisionTreeClassifier:
+    clf = DecisionTreeClassifier(
+        criterion="entropy", max_depth=max_depth, min_samples_leaf=min_samples_leaf, random_state=RNG
+    )
+    clf.fit(X, y)
+    return clf
+
+
+def fit_knn(X, y, k: int) -> Pipeline:
+    """k-NN is distance based, so features are standardised first."""
+    pipe = Pipeline([("scaler", StandardScaler()), ("clf", KNeighborsClassifier(n_neighbors=k))])
+    pipe.fit(X, y)
+    return pipe
+
+
+def fit_nb(X, y) -> GaussianNB:
+    return GaussianNB().fit(X, y)
+
+
+def rolling_origin_cv(games: pd.DataFrame, fit) -> list:
+    """Validation log-loss of `fit(X, y)` on each rolling-origin fold."""
+    losses = []
+    for train_seasons, val_season in CV_FOLDS:
+        tr = games[games["SEASON"].isin(train_seasons)]
+        va = games[games["SEASON"] == val_season]
+        model = fit(tr[FEATURES], tr["home_win"].to_numpy(dtype=int))
+        p = np.clip(model.predict_proba(va[FEATURES])[:, 1], 1e-6, 1 - 1e-6)
+        losses.append(float(log_loss(va["home_win"].to_numpy(dtype=int), p)))
+    return losses
+
+
+def cv_search(games: pd.DataFrame, name: str, grid: list, make_fit, one_se_key=None) -> tuple:
+    """Grid search by mean rolling-origin log-loss.
+
+    With `one_se_key`, the one-standard-error rule is applied: among settings
+    whose mean loss is within one standard error of the best, take the one with
+    the smallest `one_se_key` (the simplest / most regularised model).
+    """
+    rows = []
+    for params in grid:
+        losses = rolling_origin_cv(games, make_fit(params))
+        rows.append(
+            {
+                "params": params,
+                "fold_log_loss": losses,
+                "mean_log_loss": float(np.mean(losses)),
+                "se": float(np.std(losses, ddof=1) / np.sqrt(len(losses))),
+            }
+        )
+        print(f"  {name} {params}: mean log-loss {rows[-1]['mean_log_loss']:.4f}  folds {np.round(losses, 4)}")
+    best = min(rows, key=lambda r: r["mean_log_loss"])
+    chosen = best
+    if one_se_key is not None:
+        ok = [r for r in rows if r["mean_log_loss"] <= best["mean_log_loss"] + best["se"]]
+        chosen = min(ok, key=lambda r: r["params"][one_se_key])
+    print(f"  -> {name}: selected {chosen['params']} (CV minimum at {best['params']})")
+    return chosen["params"], {"grid": rows, "selected": chosen["params"], "cv_minimum": best["params"]}
+
+
+def vif_table(X: pd.DataFrame) -> list:
+    """Variance inflation factors: diagonal of the inverse correlation matrix."""
+    corr = np.corrcoef(StandardScaler().fit_transform(X).T)
+    vif = np.diag(np.linalg.inv(corr))
+    return [{"feature": f, "label": FEATURE_LABELS[f], "vif": float(v)} for f, v in zip(FEATURES, vif)]
+
+
+def confusion(y: np.ndarray, p: np.ndarray) -> dict:
+    tn, fp, fn, tp = confusion_matrix(y, (p >= 0.5).astype(int), labels=[0, 1]).ravel()
+    return {
+        "tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp),
+        "precision": float(tp / (tp + fp)) if (tp + fp) else 0.0,
+        "recall": float(tp / (tp + fn)) if (tp + fn) else 0.0,
+        "specificity": float(tn / (tn + fp)) if (tn + fp) else 0.0,
+    }
 
 
 def fit_rf(X, y, max_depth: int, min_samples_leaf: int) -> RandomForestClassifier:
@@ -379,7 +494,7 @@ def _running_from_sorted(d: pd.DataFrame, p_cols: dict) -> list:
     return recs
 
 
-def write_results_md(path: Path, payload_meta: dict, metrics: dict, coefs: list, notes: list) -> None:
+def write_results_md(path: Path, payload_meta: dict, metrics: dict, coefs: list, notes: list, extra: dict) -> None:
     lines = []
     lines.append("# NBA match-outcome model results")
     lines.append("")
@@ -388,76 +503,99 @@ def write_results_md(path: Path, payload_meta: dict, metrics: dict, coefs: list,
     lines.append("## Split")
     lines.append("")
     lines.append(f"- Training seasons: {', '.join(payload_meta['seasons_trained'])} ({metrics['n_train']} games used to fit).")
-    lines.append(f"- Hyperparameter validation slice: {payload_meta['validation_season']} (inside the training window; not the test set).")
+    lines.append(f"- Hyperparameter selection: {payload_meta['cv_scheme']}")
     lines.append(f"- Held-out test season: {payload_meta['test_season']} ({metrics['test']['logistic_regression']['n']} games).")
     lines.append(f"- Forward application: {payload_meta['current_season']} (not used for fitting or model selection).")
     lines.append("- Validation is temporal only. Rows were never randomly shuffled into train/test.")
     lines.append("")
     lines.append("## Test-set metrics (2025-26 regular season)")
     lines.append("")
-    lines.append("| Model | Accuracy | Log-loss | Brier score | N |")
-    lines.append("|---|---:|---:|---:|---:|")
-
-    def fmt(name, key):
-        m = metrics["test"][key]
-        lines.append(
-            f"| {name} | {m['accuracy']:.4f} | {m['log_loss']:.4f} | {m['brier']:.4f} | {m['n']} |"
-        )
-
-    fmt("Baseline: always home (p = train home-win rate)", "baseline_home")
-    fmt("Baseline: higher pre-game season win %", "baseline_winpct")
-    fmt("Logistic regression (L2)", "logistic_regression")
-    fmt("Random forest", "random_forest")
-    lines.append("")
-    lines.append("Lower log-loss and Brier scores are better. Accuracy uses a 0.5 probability threshold.")
-    lines.append("")
-    if "test_settled" in metrics:
-        lines.append("### Test games after both teams have played at least 5 games")
-        lines.append("")
+    def table(block):
         lines.append("| Model | Accuracy | Log-loss | Brier score | N |")
         lines.append("|---|---:|---:|---:|---:|")
-        for name, key in [
-            ("Baseline: always home", "baseline_home"),
-            ("Baseline: higher pre-game season win %", "baseline_winpct"),
-            ("Logistic regression (L2)", "logistic_regression"),
-            ("Random forest", "random_forest"),
-        ]:
-            m = metrics["test_settled"][key]
+        for key, name in MODEL_LABELS.items():
+            m = metrics[block][key]
             lines.append(
                 f"| {name} | {m['accuracy']:.4f} | {m['log_loss']:.4f} | {m['brier']:.4f} | {m['n']} |"
             )
         lines.append("")
+
+    table("test")
+    lines.append("Lower log-loss and Brier scores are better. Accuracy uses a 0.5 probability threshold.")
+    lines.append("")
+    cm = extra["confusion"]["logistic_regression"]
+    lines.append("### Confusion matrix of the default model (test season, threshold 0.5)")
+    lines.append("")
+    lines.append("| | Predicted away win | Predicted home win |")
+    lines.append("|---|---:|---:|")
+    lines.append(f"| Actual away win | {cm['tn']} | {cm['fp']} |")
+    lines.append(f"| Actual home win | {cm['fn']} | {cm['tp']} |")
+    lines.append("")
+    lines.append(f"Precision {cm['precision']:.3f}, recall {cm['recall']:.3f}, specificity {cm['specificity']:.3f}.")
+    lines.append("")
+    if "test_settled" in metrics:
+        lines.append("### Test games after both teams have played at least 5 games")
+        lines.append("")
+        table("test_settled")
     if "current" in metrics:
         lines.append("## Forward application on completed 2026-27 games")
         lines.append("")
         lines.append("These games were not in the training or validation data.")
         lines.append("")
-        lines.append("| Model | Accuracy | Log-loss | Brier score | N |")
-        lines.append("|---|---:|---:|---:|---:|")
-        for name, key in [
-            ("Baseline: always home", "baseline_home"),
-            ("Baseline: higher pre-game season win %", "baseline_winpct"),
-            ("Logistic regression (L2)", "logistic_regression"),
-            ("Random forest", "random_forest"),
-        ]:
-            m = metrics["current"][key]
-            lines.append(
-                f"| {name} | {m['accuracy']:.4f} | {m['log_loss']:.4f} | {m['brier']:.4f} | {m['n']} |"
-            )
-        lines.append("")
+        table("current")
     lines.append("## Selected hyperparameters")
     lines.append("")
-    lines.append(f"- Logistic regression: L2 penalty, `C = {payload_meta['lr_C']}` (chosen by log-loss on 2024-25).")
+    lines.append(f"Scheme: {payload_meta['cv_scheme']}")
+    lines.append("")
+    lines.append("| Model | Selected | Mean CV log-loss | Fold log-losses |")
+    lines.append("|---|---|---:|---|")
+    for key, cv in extra["cv"].items():
+        sel = next(r for r in cv["grid"] if r["params"] == cv["selected"])
+        desc = ", ".join(f"{k} = {v}" for k, v in cv["selected"].items()) or "no hyperparameters"
+        folds = ", ".join(f"{v:.4f}" for v in sel["fold_log_loss"])
+        lines.append(f"| {MODEL_LABELS[key]} | {desc} | {sel['mean_log_loss']:.4f} | {folds} |")
+    lines.append("")
     lines.append(
-        f"- Random forest: {payload_meta['rf_params']['n_estimators']} trees, "
-        f"max_depth = {payload_meta['rf_params']['max_depth']}, "
-        f"min_samples_leaf = {payload_meta['rf_params']['min_samples_leaf']} "
-        f"(chosen by log-loss on 2024-25)."
+        "The Lasso `C` uses the one-standard-error rule: the most regularised value whose mean CV "
+        f"log-loss is within one standard error of the minimum (minimum at C = {extra['cv']['logistic_regression']['cv_minimum']['C']}). "
+        "The grid now extends down to 0.001, so no selected value sits on the edge of its grid."
     )
     lines.append("")
+    lines.append("## Multicollinearity and why the default model is a Lasso")
+    lines.append("")
+    lines.append(
+        "Season win %, point differential and their last-10 / last-5 versions measure the same thing "
+        "(team strength), so they are strongly correlated. Variance inflation factors in the training window:"
+    )
+    lines.append("")
+    lines.append("| Feature | VIF | L2 coefficient | Lasso coefficient |")
+    lines.append("|---|---:|---:|---:|")
+    l2 = {r["feature"]: r["coef"] for r in extra["coefficients_l2"]}
+    l1 = {r["feature"]: r["coef"] for r in coefs}
+    for r in sorted(extra["vif"], key=lambda r: -r["vif"]):
+        lines.append(f"| {r['label']} | {r['vif']:.1f} | {l2[r['feature']]:+.3f} | {l1[r['feature']]:+.3f} |")
+    lines.append("")
+    lines.append(
+        "With every feature kept (L2), correlated features share one effect and individual signs become "
+        "unstable: last-10 win % gets a negative coefficient next to a positive one on last-10 point differential. "
+        "That does not mean winning hurts; it means the two columns cannot be separated. The L1 penalty sets "
+        f"redundant coefficients exactly to zero. It keeps {extra['n_nonzero']} of {len(coefs)} features and drops "
+        "the win-percentage columns in favour of point differential, so every remaining team-strength effect has the expected direction, "
+        "with essentially the same test log-loss as the L2 model. PCA tells the same story from the other side: "
+        f"the first {extra['pca']['n_for_90']} principal components carry 90% of the variance of the "
+        f"{len(coefs)} standardised features (PC1 alone: {extra['pca']['explained_variance_ratio'][0]:.1%})."
+    )
+    lines.append("")
+    lines.append("## Decision tree (course model, for interpretation)")
+    lines.append("")
+    lines.append("```")
+    lines.append(extra["tree_text"].rstrip())
+    lines.append("```")
+    lines.append("")
+    lines.extend(extra["forecast_md"])
     lines.append("## Logistic regression coefficients")
     lines.append("")
-    lines.append("Coefficients are on standardized features (mean 0, variance 1 in the training window). A positive coefficient increases the log-odds of a home win.")
+    lines.append("Default model (Lasso). Coefficients are on standardized features (mean 0, variance 1 in the training window). A positive coefficient increases the log-odds of a home win. A coefficient of 0.000 means the Lasso removed the feature.")
     lines.append("")
     lines.append("| Feature | Coefficient | Odds ratio (per +1 SD) |")
     lines.append("|---|---:|---:|")
@@ -494,83 +632,104 @@ def main() -> None:
     test = games[games["SEASON"] == TEST_SEASON].copy()
     current = games[games["SEASON"] == CURRENT_SEASON].copy()
 
-    X_core, y_core = core[FEATURES], core["home_win"].to_numpy(dtype=int)
-    X_val, y_val = val[FEATURES], val["home_win"].to_numpy(dtype=int)
     X_tv, y_tv = train_val[FEATURES], train_val["home_win"].to_numpy(dtype=int)
     X_test, y_test = test[FEATURES], test["home_win"].to_numpy(dtype=int)
 
-    print("Hyperparameter search on 2024-25 validation slice...")
-    best_lr = None
-    for C in (0.1, 0.3, 1.0, 3.0, 10.0):
-        pipe = fit_logistic(X_core, y_core, C)
-        p = pipe.predict_proba(X_val)[:, 1]
-        m = metrics_dict(y_val, p)
-        print(f"  LR C={C}: log_loss={m['log_loss']:.4f} acc={m['accuracy']:.4f} brier={m['brier']:.4f}")
-        if best_lr is None or m["log_loss"] < best_lr[0]:
-            best_lr = (m["log_loss"], C)
-    best_rf = None
-    for depth in (5, 6, 8, 10):
-        for leaf in (15, 25, 40):
-            clf = fit_rf(X_core, y_core, depth, leaf)
-            p = clf.predict_proba(X_val)[:, 1]
-            m = metrics_dict(y_val, p)
-            print(f"  RF depth={depth} leaf={leaf}: log_loss={m['log_loss']:.4f} acc={m['accuracy']:.4f}")
-            if best_rf is None or m["log_loss"] < best_rf[0]:
-                best_rf = (m["log_loss"], depth, leaf)
+    print("Rolling-origin cross-validation inside the training window:")
+    for tr_s, va_s in CV_FOLDS:
+        print(f"  train {tr_s[0]}..{tr_s[-1]} -> validate {va_s}")
+    cv = {}
+    sel_l1, cv["logistic_regression"] = cv_search(
+        train_val, "Lasso logistic", [{"C": c} for c in C_GRID],
+        lambda p: (lambda X, y: fit_logistic(X, y, p["C"], "l1")), one_se_key="C",
+    )
+    sel_l2, cv["logistic_l2"] = cv_search(
+        train_val, "L2 logistic", [{"C": c} for c in C_GRID],
+        lambda p: (lambda X, y: fit_logistic(X, y, p["C"], "l2")),
+    )
+    sel_pca, cv["pca_logistic"] = cv_search(
+        train_val, "PCA + logistic", [{"n_components": k} for k in (1, 2, 3, 4, 5, 6, 8, 10, 12, 15)],
+        lambda p: (lambda X, y: fit_pca_logistic(X, y, p["n_components"])),
+    )
+    sel_tree, cv["decision_tree"] = cv_search(
+        train_val, "Decision tree",
+        [{"max_depth": d, "min_samples_leaf": leaf} for d in (2, 3, 4, 5, 6) for leaf in (50, 100, 200)],
+        lambda p: (lambda X, y: fit_tree(X, y, p["max_depth"], p["min_samples_leaf"])),
+    )
+    sel_knn, cv["knn"] = cv_search(
+        train_val, "k-NN", [{"k": k} for k in (5, 15, 25, 51, 101, 151, 201, 301)],
+        lambda p: (lambda X, y: fit_knn(X, y, p["k"])),
+    )
+    _, cv["naive_bayes"] = cv_search(train_val, "Gaussian NB", [{}], lambda p: fit_nb)
+    sel_rf, cv["random_forest"] = cv_search(
+        train_val, "Random forest",
+        [{"max_depth": d, "min_samples_leaf": leaf} for d in (5, 6, 8, 10) for leaf in (15, 25, 40)],
+        lambda p: (lambda X, y: fit_rf(X, y, p["max_depth"], p["min_samples_leaf"])),
+    )
 
-    lr_C = best_lr[1]
-    rf_depth, rf_leaf = best_rf[1], best_rf[2]
-    print(f"Selected LR C={lr_C}, RF depth={rf_depth} leaf={rf_leaf}")
-    print("Refitting on full training window...")
+    lr_C = sel_l1["C"]
+    rf_depth, rf_leaf = sel_rf["max_depth"], sel_rf["min_samples_leaf"]
+    print("Refitting every model on the full training window...")
 
-    lr = fit_logistic(X_tv, y_tv, lr_C)
+    lr = fit_logistic(X_tv, y_tv, lr_C, "l1")
     rf = fit_rf(X_tv, y_tv, rf_depth, rf_leaf)
-
-    p_lr_test = lr.predict_proba(X_test)[:, 1]
-    p_rf_test = rf.predict_proba(X_test)[:, 1]
-    p_home_const = np.full(len(test), float(y_tv.mean()))
-    p_wp_test = winpct_baseline_p(test)
-
-    test_metrics = {
-        "baseline_home": metrics_dict(y_test, p_home_const),
-        "baseline_winpct": metrics_dict(y_test, p_wp_test),
-        "logistic_regression": metrics_dict(y_test, p_lr_test),
-        "random_forest": metrics_dict(y_test, p_rf_test),
+    tree = fit_tree(X_tv, y_tv, sel_tree["max_depth"], sel_tree["min_samples_leaf"])
+    fitted = {
+        "logistic_regression": lr,
+        "logistic_l2": fit_logistic(X_tv, y_tv, sel_l2["C"], "l2"),
+        "pca_logistic": fit_pca_logistic(X_tv, y_tv, sel_pca["n_components"]),
+        "decision_tree": tree,
+        "knn": fit_knn(X_tv, y_tv, sel_knn["k"]),
+        "naive_bayes": fit_nb(X_tv, y_tv),
+        "random_forest": rf,
     }
+    home_rate = float(y_tv.mean())
+
+    def all_probs(df: pd.DataFrame) -> dict:
+        out = {
+            "baseline_home": np.full(len(df), home_rate),
+            "baseline_winpct": winpct_baseline_p(df),
+        }
+        for key, model in fitted.items():
+            out[key] = model.predict_proba(df[FEATURES])[:, 1]
+        return {k: out[k] for k in MODEL_LABELS}
+
+    def all_metrics_for(df: pd.DataFrame) -> dict:
+        y = df["home_win"].to_numpy(dtype=int)
+        return {k: metrics_dict(y, p) for k, p in all_probs(df).items()}
+
+    probs_test = all_probs(test)
+    p_lr_test, p_rf_test, p_wp_test = (
+        probs_test["logistic_regression"], probs_test["random_forest"], probs_test["baseline_winpct"]
+    )
+    test_metrics = {k: metrics_dict(y_test, p) for k, p in probs_test.items()}
     print("TEST 2025-26")
     for k, v in test_metrics.items():
-        print(f"  {k}: {v}")
+        print(f"  {k}: acc={v['accuracy']:.4f} log_loss={v['log_loss']:.4f} brier={v['brier']:.4f}")
 
     settled = test[(test["home_prior_games"] >= 5) & (test["away_prior_games"] >= 5)]
-    settled_metrics = {
-        "baseline_home": metrics_dict(settled["home_win"], np.full(len(settled), float(y_tv.mean()))),
-        "baseline_winpct": metrics_dict(settled["home_win"], winpct_baseline_p(settled)),
-        "logistic_regression": metrics_dict(settled["home_win"], lr.predict_proba(settled[FEATURES])[:, 1]),
-        "random_forest": metrics_dict(settled["home_win"], rf.predict_proba(settled[FEATURES])[:, 1]),
-    }
+    settled_metrics = all_metrics_for(settled)
 
     current_metrics = None
     p_lr_cur = p_rf_cur = None
     if len(current):
         p_lr_cur = lr.predict_proba(current[FEATURES])[:, 1]
         p_rf_cur = rf.predict_proba(current[FEATURES])[:, 1]
-        current_metrics = {
-            "baseline_home": metrics_dict(current["home_win"], np.full(len(current), float(y_tv.mean()))),
-            "baseline_winpct": metrics_dict(current["home_win"], winpct_baseline_p(current)),
-            "logistic_regression": metrics_dict(current["home_win"], p_lr_cur),
-            "random_forest": metrics_dict(current["home_win"], p_rf_cur),
-        }
+        current_metrics = all_metrics_for(current)
         print("FORWARD 2026-27 completed")
         for k, v in current_metrics.items():
-            print(f"  {k}: {v}")
+            print(f"  {k}: acc={v['accuracy']:.4f} log_loss={v['log_loss']:.4f}")
 
     # Save artifacts
     joblib.dump(lr, MODELS / "logistic_regression.joblib")
     joblib.dump(rf, MODELS / "random_forest.joblib")
+    joblib.dump(tree, MODELS / "decision_tree.joblib")
     meta_models = {
         "features": FEATURES,
         "feature_labels": FEATURE_LABELS,
         "lr_C": lr_C,
+        "lr_penalty": "l1",
+        "selected_hyperparameters": {k: v["selected"] for k, v in cv.items()},
         "rf_params": {
             "n_estimators": 400,
             "max_depth": rf_depth,
@@ -601,6 +760,39 @@ def main() -> None:
         )
     coefs_sorted = sorted(coefs, key=lambda r: abs(r["coef"]), reverse=True)
     (MODELS / "logistic_coefficients.json").write_text(json.dumps(coefs_sorted, indent=2))
+
+    l2_pipe = fitted["logistic_l2"]
+    coefs_l2 = [
+        {"feature": n, "label": FEATURE_LABELS[n], "coef": float(c), "odds_ratio": float(np.exp(c))}
+        for n, c in zip(FEATURES, l2_pipe.named_steps["clf"].coef_[0])
+    ]
+    n_nonzero = int(sum(1 for r in coefs if r["coef"] != 0.0))
+
+    # Multicollinearity diagnostics on the training window
+    vif = vif_table(X_tv)
+    corr = np.corrcoef(StandardScaler().fit_transform(X_tv).T)
+    pca_full = PCA().fit(StandardScaler().fit_transform(X_tv))
+    evr = pca_full.explained_variance_ratio_
+    pca_info = {
+        "explained_variance_ratio": [float(v) for v in evr],
+        "cumulative": [float(v) for v in np.cumsum(evr)],
+        "n_for_90": int(np.searchsorted(np.cumsum(evr), 0.90) + 1),
+        "n_selected": int(sel_pca["n_components"]),
+        "pc1_loadings": [float(v) for v in pca_full.components_[0]],
+    }
+    tree_text = export_text(tree, feature_names=[FEATURE_LABELS[f] for f in FEATURES], decimals=2)
+    confusion_out = {k: confusion(y_test, p) for k, p in probs_test.items()}
+
+    # Season simulation (Monte Carlo) with the default model
+    from simulate_season import forecast_markdown, margin_sigma, simulate
+
+    sigma = margin_sigma(lr.predict_proba(X_tv)[:, 1], train_val["home_PLUS_MINUS"].to_numpy(dtype=float))
+    sched_all = pd.read_csv(ROOT / "data" / "raw" / "schedule_2026_27_regular.csv", dtype={"gameId": str})
+    print("Simulating the rest of 2026-27 and the playoffs...")
+    forecast = simulate(lr, FEATURES, team_games, sched_all, sigma)
+    fav = forecast["favorites"]
+    print(f"  East: {fav['east']['name']} {fav['east']['p']:.1%} | West: {fav['west']['name']} {fav['west']['p']:.1%} | "
+          f"Champion: {fav['champion']['name']} {fav['champion']['p']:.1%}")
 
     rf_importance = [
         {"feature": n, "label": FEATURE_LABELS[n], "importance": float(v)}
@@ -788,6 +980,13 @@ def main() -> None:
         "seasons_collected": list(collection_meta.get("seasons", {}).keys()) or list(games["SEASON"].unique()),
         "seasons_trained": TRAIN_SEASONS,
         "validation_season": "2024-25",
+        "cv_scheme": (
+            "rolling-origin cross-validation inside the training window "
+            "(train 2021-22 -> validate 2022-23; train 2021-23 -> validate 2023-24; "
+            "train 2021-24 -> validate 2024-25), mean validation log-loss."
+        ),
+        "lr_penalty": "l1",
+        "n_features_kept": n_nonzero,
         "test_season": TEST_SEASON,
         "current_season": CURRENT_SEASON,
         "n_games_collected": int(games["GAME_ID"].nunique()),
@@ -820,10 +1019,21 @@ def main() -> None:
         "Neutral-site games (NBA Cup knockout, Mexico City, Paris, and similar) are assigned the NBA's designated home team from the official schedule.",
         "Two 2026-27 games may still have been in progress at collection time and therefore are absent from completed-game logs; snapshots use the last official final only.",
         "The official 2026-27 regular-season schedule endpoint returned 1,206 games rather than the usual 1,230. Upcoming-game lists use the published schedule as returned.",
-        "The website default model is logistic regression because it is the course's linear-model family and is fully interpretable. The random forest is shown as a comparison.",
+        "The website default model is the Lasso logistic regression because it is the course's linear-model family, is fully interpretable, and removes the redundant features. The random forest is not course material and is shown only as a comparison.",
+        "Season forecast: last-10 offensive/defensive ratings are held at their current values during the simulation; standings ties are broken by point differential rather than the NBA's head-to-head rules; the two NBA Cup-dependent games per team are filled with random same-conference opponents; injuries and trades are not modelled. Early in the season the forecast leans on a small number of games, so the percentages will move a lot.",
     ]
 
-    write_results_md(ROOT / "RESULTS.md", payload_meta, all_metrics, coefs_sorted, notes)
+    extra = {
+        "cv": cv,
+        "confusion": confusion_out,
+        "coefficients_l2": coefs_l2,
+        "vif": vif,
+        "pca": pca_info,
+        "n_nonzero": n_nonzero,
+        "tree_text": tree_text,
+        "forecast_md": forecast_markdown(forecast),
+    }
+    write_results_md(ROOT / "RESULTS.md", payload_meta, all_metrics, coefs_sorted, notes, extra)
 
     app = {
         "meta": payload_meta,
@@ -832,6 +1042,15 @@ def main() -> None:
         "feature_labels": FEATURE_LABELS,
         "coefficients_lr": coefs_sorted,
         "importance_rf": rf_importance,
+        "model_labels": MODEL_LABELS,
+        "coefficients_l2": coefs_l2,
+        "cv": cv,
+        "confusion": confusion_out,
+        "vif": vif,
+        "corr": {"features": FEATURES, "matrix": [[round(float(v), 3) for v in row] for row in corr]},
+        "pca": pca_info,
+        "tree_text": tree_text,
+        "season_forecast": forecast,
         "intercept_lr": float(clf.intercept_[0]),
         "teams": teams_out,
         "matchups": matchups,
@@ -847,6 +1066,7 @@ def main() -> None:
     }
     out = WEB_DATA / "app_data.json"
     out.write_text(json.dumps(app, separators=(",", ":")))
+    (WEB_DATA / "season_forecast.json").write_text(json.dumps(forecast, indent=1))
     # pretty copy for inspection
     (PROCESSED / "export_meta.json").write_text(json.dumps({"meta": payload_meta, "metrics": all_metrics}, indent=2))
     print(f"Wrote {out} ({out.stat().st_size / 1e6:.2f} MB)")

@@ -454,3 +454,32 @@ select {
 }
 .diverge-track i.a { background: var(--away); }
 .diverge-track i.h { background: var(--home); }
+
+/* ---- Season forecast ---- */
+.fav-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.fav-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; background: var(--paper); }
+.fav-card .k { font-size: 0.78rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 0 0 4px; }
+.fav-card .team { font-family: var(--serif); font-size: 1.35rem; font-weight: 600; margin: 0; line-height: 1.2; }
+.fav-card .p { margin: 4px 0 0; font-variant-numeric: tabular-nums; color: var(--muted); }
+.fav-card .p strong { color: var(--ink); font-size: 1.05rem; }
+.conf-tables { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; }
+.conf-wrap { overflow-x: auto; }
+.conf-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 0.88rem; }
+.conf-table caption { text-align: left; font-family: var(--serif); font-size: 1.15rem; font-weight: 600; padding-bottom: 8px; }
+.conf-table th { font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-weight: 600; text-align: right; padding: 0 4px 6px; white-space: nowrap; }
+.conf-table th.l, .conf-table td.l { text-align: left; }
+.conf-table td { padding: 6px 4px; border-top: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.conf-table td.rank { color: var(--muted); width: 1.6em; }
+.conf-table td.team { font-weight: 600; }
+.conf-table .chip { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 7px; vertical-align: baseline; }
+.conf-table tr.cut-playoff td { border-top: 2px solid var(--line-strong); }
+.conf-table tr.cut-playin td { border-top: 2px dashed var(--line-strong); }
+.conf-table td.pct { position: relative; min-width: 50px; }
+.conf-table td.pct i { position: absolute; left: 0; bottom: 3px; height: 3px; background: var(--home); border-radius: 2px; opacity: 0.75; }
+.conf-table td.pct.title i { background: var(--teal); }
+.conf-legend { font-size: 0.82rem; color: var(--muted); margin: 8px 0 0; }
+.forecast-sub { margin: 22px 0 4px; }
+.title-chart { height: 420px; }
+@media (max-width: 860px) {
+  .fav-cards, .conf-tables { grid-template-columns: 1fr; }
+}

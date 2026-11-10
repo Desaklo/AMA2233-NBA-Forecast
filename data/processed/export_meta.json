@@ -3,8 +3,8 @@
     "title": "NBA Match Outcome Forecast",
     "course": "AMA2233 Data Analytics and Visualization",
     "institution": "The Hong Kong Polytechnic University",
-    "as_of_hkt": "2026-11-10 12:21 UTC+08:00",
-    "as_of_iso": "2026-11-10T12:21:08.123868+08:00",
+    "as_of_hkt": "2026-11-10 15:19 UTC+08:00",
+    "as_of_iso": "2026-11-10T15:19:14.363568+08:00",
     "data_source": "NBA official stats API (stats.nba.com) via the nba_api Python package",
     "data_source_short": "stats.nba.com (NBA official stats), accessed with nba_api",
     "seasons_collected": [
@@ -22,16 +22,19 @@
       "2024-25"
     ],
     "validation_season": "2024-25",
+    "cv_scheme": "rolling-origin cross-validation inside the training window (train 2021-22 -> validate 2022-23; train 2021-23 -> validate 2023-24; train 2021-24 -> validate 2024-25), mean validation log-loss.",
+    "lr_penalty": "l1",
+    "n_features_kept": 13,
     "test_season": "2025-26",
     "current_season": "2026-27",
     "n_games_collected": 6302,
     "n_train": 4920,
     "model_primary": "logistic_regression",
     "model_secondary": "random_forest",
-    "lr_C": 0.1,
+    "lr_C": 0.03,
     "rf_params": {
       "n_estimators": 400,
-      "max_depth": 10,
+      "max_depth": 8,
       "min_samples_leaf": 25,
       "max_features": "sqrt",
       "random_state": 2233
@@ -59,16 +62,51 @@
         "home_win_rate": 0.5544715447154471
       },
       "logistic_regression": {
+        "accuracy": 0.6747967479674797,
+        "log_loss": 0.6103458590660207,
+        "brier": 0.21051565972242167,
+        "n": 1230,
+        "home_win_rate": 0.5544715447154471
+      },
+      "logistic_l2": {
+        "accuracy": 0.6650406504065041,
+        "log_loss": 0.6100502078262292,
+        "brier": 0.21047682059529857,
+        "n": 1230,
+        "home_win_rate": 0.5544715447154471
+      },
+      "pca_logistic": {
+        "accuracy": 0.6642276422764227,
+        "log_loss": 0.6156109114172349,
+        "brier": 0.21294756797666944,
+        "n": 1230,
+        "home_win_rate": 0.5544715447154471
+      },
+      "decision_tree": {
+        "accuracy": 0.6487804878048781,
+        "log_loss": 0.6128708999737514,
+        "brier": 0.21262310491167266,
+        "n": 1230,
+        "home_win_rate": 0.5544715447154471
+      },
+      "knn": {
         "accuracy": 0.6682926829268293,
-        "log_loss": 0.6103834723759921,
-        "brier": 0.21061327503428223,
+        "log_loss": 0.611342349712343,
+        "brier": 0.2113665318487315,
+        "n": 1230,
+        "home_win_rate": 0.5544715447154471
+      },
+      "naive_bayes": {
+        "accuracy": 0.6764227642276422,
+        "log_loss": 0.9740550454922048,
+        "brier": 0.2505543556577785,
         "n": 1230,
         "home_win_rate": 0.5544715447154471
       },
       "random_forest": {
         "accuracy": 0.6764227642276422,
-        "log_loss": 0.5997517471542052,
-        "brier": 0.20599942996628154,
+        "log_loss": 0.5991616261266649,
+        "brier": 0.20576711128114167,
         "n": 1230,
         "home_win_rate": 0.5544715447154471
       }
@@ -89,16 +127,51 @@
         "home_win_rate": 0.5516941789748045
       },
       "logistic_regression": {
-        "accuracy": 0.6733275412684622,
-        "log_loss": 0.6054887693202551,
-        "brier": 0.20866877723176355,
+        "accuracy": 0.6768027801911382,
+        "log_loss": 0.606198027095404,
+        "brier": 0.20875759188604562,
+        "n": 1151,
+        "home_win_rate": 0.5516941789748045
+      },
+      "logistic_l2": {
+        "accuracy": 0.6698523023457863,
+        "log_loss": 0.6052452377842382,
+        "brier": 0.20854103221446071,
+        "n": 1151,
+        "home_win_rate": 0.5516941789748045
+      },
+      "pca_logistic": {
+        "accuracy": 0.6698523023457863,
+        "log_loss": 0.609817304027022,
+        "brier": 0.210568898448844,
+        "n": 1151,
+        "home_win_rate": 0.5516941789748045
+      },
+      "decision_tree": {
+        "accuracy": 0.6542137271937446,
+        "log_loss": 0.6084813415968515,
+        "brier": 0.21061883447310578,
+        "n": 1151,
+        "home_win_rate": 0.5516941789748045
+      },
+      "knn": {
+        "accuracy": 0.6724587315377932,
+        "log_loss": 0.6078758811614087,
+        "brier": 0.20973187307048394,
+        "n": 1151,
+        "home_win_rate": 0.5516941789748045
+      },
+      "naive_bayes": {
+        "accuracy": 0.6828844483058211,
+        "log_loss": 0.9332031596914518,
+        "brier": 0.24715505677865918,
         "n": 1151,
         "home_win_rate": 0.5516941789748045
       },
       "random_forest": {
-        "accuracy": 0.684622067767159,
-        "log_loss": 0.596086034485256,
-        "brier": 0.20427767331804542,
+        "accuracy": 0.68375325803649,
+        "log_loss": 0.5956519635213112,
+        "brier": 0.20412143727562287,
         "n": 1151,
         "home_win_rate": 0.5516941789748045
       }
@@ -119,16 +192,51 @@
         "home_win_rate": 0.5197368421052632
       },
       "logistic_regression": {
+        "accuracy": 0.6447368421052632,
+        "log_loss": 0.6455100258444629,
+        "brier": 0.2254492512756208,
+        "n": 152,
+        "home_win_rate": 0.5197368421052632
+      },
+      "logistic_l2": {
+        "accuracy": 0.6447368421052632,
+        "log_loss": 0.6511820963897823,
+        "brier": 0.2256278861183744,
+        "n": 152,
+        "home_win_rate": 0.5197368421052632
+      },
+      "pca_logistic": {
+        "accuracy": 0.6513157894736842,
+        "log_loss": 0.6412382427209279,
+        "brier": 0.221135482506557,
+        "n": 152,
+        "home_win_rate": 0.5197368421052632
+      },
+      "decision_tree": {
         "accuracy": 0.6381578947368421,
-        "log_loss": 0.6526193518534916,
-        "brier": 0.22602303611824834,
+        "log_loss": 0.6296982841823555,
+        "brier": 0.22068413484876537,
+        "n": 152,
+        "home_win_rate": 0.5197368421052632
+      },
+      "knn": {
+        "accuracy": 0.6381578947368421,
+        "log_loss": 0.6288261575466408,
+        "brier": 0.2189677738049347,
+        "n": 152,
+        "home_win_rate": 0.5197368421052632
+      },
+      "naive_bayes": {
+        "accuracy": 0.625,
+        "log_loss": 1.3879317160141518,
+        "brier": 0.28361328149969056,
         "n": 152,
         "home_win_rate": 0.5197368421052632
       },
       "random_forest": {
-        "accuracy": 0.6578947368421053,
-        "log_loss": 0.6268724271437345,
-        "brier": 0.21852380154863904,
+        "accuracy": 0.6513157894736842,
+        "log_loss": 0.625973391039165,
+        "brier": 0.21815521680985933,
         "n": 152,
         "home_win_rate": 0.5197368421052632
       }

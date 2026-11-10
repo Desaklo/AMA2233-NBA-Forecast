@@ -239,12 +239,21 @@ function drawChart() {
   strip.innerHTML = "";
   if (!pred || home === away) {
     Plotly.purge("chart");
+    document.getElementById("chart").innerHTML = "";
     return;
   }
   const chartEl = document.getElementById("chart");
+  // Clear whatever the previous tab left behind (a Plotly figure or the comparison table),
+  // otherwise the new chart is drawn on top of it.
+  Plotly.purge(chartEl);
+  chartEl.innerHTML = "";
   if (activeChart !== "cmp") chartEl.style.height = "";
-  const drawers = { prob: drawProb, form: drawForm, why: drawWhy, cal: drawCal, traj: drawTraj, cmp: drawCmp };
-  drawers[activeChart](home, away, pred);
+  const drawers = {
+    prob: drawProb, form: drawForm, why: drawWhy, cal: drawCal, traj: drawTraj, cmp: drawCmp,
+    models: drawModels, cm: drawCm, odds: drawOdds,
+  };
+  if (["models", "cm", "odds"].includes(activeChart)) drawers[activeChart]();
+  else drawers[activeChart](home, away, pred);
 }
 
 function drawProb(home, away, pred) {
@@ -578,6 +587,195 @@ function drawModelTraj() {
   );
 }
 
+const MODEL_STYLE = {
+  logistic_regression: { short: "Lasso logistic", color: HOME, dash: "solid", width: 3 },
+  logistic_l2: { short: "L2 logistic", color: SKY, dash: "solid", width: 2 },
+  pca_logistic: { short: "PCA + logistic", color: PURPLE, dash: "solid", width: 2 },
+  decision_tree: { short: "Decision tree", color: VERM, dash: "solid", width: 2 },
+  knn: { short: "k-NN", color: AWAY, dash: "solid", width: 2 },
+  naive_bayes: { short: "Naive Bayes", color: INK, dash: "dash", width: 2 },
+  random_forest: { short: "Random forest", color: TEAL, dash: "solid", width: 2 },
+  baseline_winpct: { short: "Win% baseline", color: MUTED, dash: "dot", width: 2 },
+  baseline_home: { short: "Always home", color: MUTED, dash: "dot", width: 2 },
+};
+
+function drawModels() {
+  const test = DATA.metrics.test;
+  const keys = Object.keys(DATA.model_labels).sort((a, b) => test[b].log_loss - test[a].log_loss);
+  const isBase = (k) => k.startsWith("baseline");
+  Plotly.newPlot(
+    "chart",
+    [
+      {
+        type: "bar",
+        orientation: "h",
+        y: keys.map((k) => MODEL_STYLE[k].short),
+        x: keys.map((k) => test[k].log_loss),
+        marker: { color: keys.map((k) => (k === "logistic_regression" ? HOME : isBase(k) ? "#b7af9f" : SKY)) },
+        text: keys.map((k) => `${test[k].log_loss.toFixed(3)}  ·  accuracy ${(test[k].accuracy * 100).toFixed(1)}%`),
+        textposition: "outside",
+        cliponaxis: false,
+        hovertemplate: "%{y}<br>log-loss %{x:.4f}<extra></extra>",
+      },
+    ],
+    layoutExtras({
+      xaxis: { title: "Test log-loss, 2025–26 (lower is better)", range: [0, 1.5], zeroline: false },
+      yaxis: { automargin: true },
+      margin: { l: 130, r: 30, t: 20, b: 52 },
+      showlegend: false,
+    }),
+    PLOT_CONFIG
+  );
+  const sel = DATA.cv;
+  const d = (k) => Object.entries(sel[k].selected).map(([a, b]) => `${a} = ${b}`).join(", ");
+  chartCaption(
+    `All models are fitted on 2021–22 to 2024–25 and scored once on the held-out 2025–26 season (${test.logistic_regression.n} games). Grey bars are the two baselines. Hyperparameters were chosen by rolling-origin cross-validation inside the training window: Lasso ${d("logistic_regression")}; L2 ${d("logistic_l2")}; PCA ${d("pca_logistic")}; tree ${d("decision_tree")}; k-NN ${d("knn")}; forest ${d("random_forest")}. Naive Bayes scores badly on log-loss because it treats the strongly correlated features as independent and becomes overconfident.`
+  );
+}
+
+function drawCm() {
+  const key = modelKey() === "rf" ? "random_forest" : "logistic_regression";
+  const c = DATA.confusion[key];
+  const z = [[c.fn, c.tp], [c.tn, c.fp]];
+  const names = [["Missed home win", "Correct home win"], ["Correct away win", "Wrong home call"]];
+  const n = c.tn + c.fp + c.fn + c.tp;
+  const zmax = Math.max(c.tn, c.fp, c.fn, c.tp);
+  const ann = [];
+  for (let i = 0; i < 2; i++)
+    for (let j = 0; j < 2; j++)
+      ann.push({
+        x: j, y: i, showarrow: false,
+        text: `<b>${z[i][j]}</b><br>${names[i][j]}<br>${((z[i][j] / n) * 100).toFixed(1)}% of games`,
+        font: { color: z[i][j] > zmax * 0.55 ? "#ffffff" : INK, size: 14 },
+      });
+  Plotly.newPlot(
+    "chart",
+    [
+      {
+        type: "heatmap", z, x: [0, 1], y: [0, 1], zmin: 0, zmax,
+        colorscale: [[0, "#eef4f8"], [1, "#045a8d"]], showscale: false, xgap: 3, ygap: 3, hoverinfo: "skip",
+      },
+    ],
+    layoutExtras({
+      xaxis: { title: "Predicted", tickvals: [0, 1], ticktext: ["Away win", "Home win"], zeroline: false, showgrid: false },
+      yaxis: { title: "Actual", tickvals: [0, 1], ticktext: ["Home win", "Away win"], zeroline: false, showgrid: false },
+      annotations: ann,
+      margin: { l: 90, r: 30, t: 20, b: 56 },
+    }),
+    PLOT_CONFIG
+  );
+  chartCaption(
+    `Confusion matrix for the ${key === "random_forest" ? "random forest" : "Lasso logistic regression"} on the 2025–26 test season at a 0.5 threshold (${n} games). Accuracy ${(((c.tp + c.tn) / n) * 100).toFixed(1)}%, precision ${(c.precision * 100).toFixed(1)}% (home calls that were right), recall ${(c.recall * 100).toFixed(1)}% (home wins found), specificity ${(c.specificity * 100).toFixed(1)}% (away wins found). Use the model switch above to see the random forest.`
+  );
+}
+
+function drawOdds() {
+  const l1 = DATA.coefficients_lr.slice().sort((a, b) => Math.abs(a.coef) - Math.abs(b.coef));
+  const l2 = Object.fromEntries(DATA.coefficients_l2.map((r) => [r.feature, r]));
+  const vif = Object.fromEntries(DATA.vif.map((r) => [r.feature, r.vif]));
+  const y = l1.map((r) => shortLabel(r.label));
+  const kept = l1.filter((r) => r.coef !== 0);
+  const dropped = l1.filter((r) => r.coef === 0);
+  Plotly.newPlot(
+    "chart",
+    [
+      {
+        type: "scatter", mode: "markers", name: "L2 (all features kept)",
+        x: l1.map((r) => l2[r.feature].odds_ratio), y,
+        marker: { color: "#ffffff", size: 10, line: { color: MUTED, width: 2 } },
+        customdata: l1.map((r) => vif[r.feature]),
+        hovertemplate: "%{y}<br>L2 odds ratio %{x:.3f}<br>VIF %{customdata:.1f}<extra></extra>",
+      },
+      {
+        type: "scatter", mode: "markers", name: "Lasso, default model (kept)",
+        x: kept.map((r) => r.odds_ratio), y: kept.map((r) => shortLabel(r.label)),
+        marker: { color: HOME, size: 12 },
+        customdata: kept.map((r) => vif[r.feature]),
+        hovertemplate: "%{y}<br>Lasso odds ratio %{x:.3f}<br>VIF %{customdata:.1f}<extra></extra>",
+      },
+      {
+        type: "scatter", mode: "markers", name: "Removed by the Lasso (odds ratio 1)",
+        x: dropped.map(() => 1), y: dropped.map((r) => shortLabel(r.label)),
+        marker: { color: VERM, size: 10, symbol: "x" },
+        hovertemplate: "%{y}<br>removed by the Lasso<extra></extra>",
+      },
+    ],
+    layoutExtras({
+      xaxis: { title: "Odds ratio for a home win per +1 standard deviation", zeroline: false, dtick: 0.1 },
+      yaxis: { automargin: true, categoryorder: "array", categoryarray: y },
+      shapes: [{ type: "line", yref: "paper", y0: 0, y1: 1, x0: 1, x1: 1, line: { color: INK, width: 1 } }],
+      margin: { l: 190, r: 28, t: 36, b: 56 },
+      height: 620,
+    }),
+    PLOT_CONFIG
+  );
+  document.getElementById("chart").style.height = "620px";
+  chartCaption(
+    `An odds ratio above 1 raises the odds of a home win; below 1 lowers them. Hollow circles are the L2 model that keeps all ${l1.length} features: because win %, point differential and their last-10 versions are highly correlated (hover for the variance inflation factor), it gives "home last-10 win %" an odds ratio below 1, which is an artefact of multicollinearity, not a real effect. The Lasso (filled blue) keeps ${kept.length} features, sets the redundant ones to exactly 1 (crosses), and every remaining team-strength effect points in the expected direction. Test log-loss is practically identical (${DATA.metrics.test.logistic_regression.log_loss.toFixed(4)} vs ${DATA.metrics.test.logistic_l2.log_loss.toFixed(4)}).`
+  );
+}
+
+function renderForecast() {
+  const fc = DATA.season_forecast;
+  if (!fc) {
+    document.querySelector(".forecast-panel").hidden = true;
+    return;
+  }
+  const by = Object.fromEntries(fc.teams.map((t) => [t.abbr, t]));
+  const f = fc.favorites;
+  $("#forecast-note").textContent =
+    `${fc.n_sims.toLocaleString()} simulated seasons. Each remaining game is played with the Lasso model's probability, records and form are updated after every simulated game, then the play-in and a best-of-seven bracket are simulated.`;
+  const card = (k, x) =>
+    `<div class="fav-card"><p class="k">${k}</p><p class="team"><span class="chip" style="display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:8px;background:${teamByAbbr(x.abbr).primary}"></span>${escapeHtml(x.name)}</p><p class="p"><strong>${fmtPct(x.p)}</strong> of simulations</p></div>`;
+  $("#fav-cards").innerHTML =
+    card("Eastern Conference favourite", f.east) + card("Western Conference favourite", f.west) + card("Championship favourite", f.champion);
+  const pct = (p, cls = "") => `<td class="pct ${cls}">${p < 0.0005 ? "<0.1%" : fmtPct(p)}<i style="width:${Math.max(0, p * 100)}%"></i></td>`;
+  const table = (conf) => {
+    const rows = fc.tables[conf]
+      .map((a, i) => {
+        const r = by[a];
+        const cls = i === 6 ? "cut-playoff" : i === 10 ? "cut-playin" : "";
+        return `<tr class="${cls}"><td class="rank">${i + 1}</td>
+          <td class="team l"><span class="chip" style="background:${teamByAbbr(a).primary}"></span>${escapeHtml(r.name)}</td>
+          <td>${r.current_w}–${r.current_l}</td>
+          <td><strong>${Math.round(r.proj_w)}–${82 - Math.round(r.proj_w)}</strong></td>
+          ${pct(r.p_playoffs)}${pct(r.p_conf_champ)}${pct(r.p_champion, "title")}</tr>`;
+      })
+      .join("");
+    return `<div class="conf-wrap"><table class="conf-table"><caption>${conf}ern Conference</caption>
+      <thead><tr><th></th><th class="l">Team</th><th>Now</th><th>Proj.</th><th>Playoffs</th><th>Win ${conf}</th><th>Title</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      <p class="conf-legend">Solid line: top 6 qualify directly. Dashed line: seeds 7–10 go to the play-in.</p></div>`;
+  };
+  $("#conf-tables").innerHTML = table("East") + table("West");
+
+  const top = fc.teams.slice().sort((a, b) => b.p_champion - a.p_champion).slice(0, 12).reverse();
+  Plotly.newPlot(
+    "title-chart",
+    [
+      {
+        type: "bar", orientation: "h", name: "Win the championship",
+        y: top.map((t) => t.abbr), x: top.map((t) => t.p_champion),
+        marker: { color: TEAL },
+        text: top.map((t) => fmtPct(t.p_champion)), textposition: "outside", cliponaxis: false,
+        customdata: top.map((t) => [t.name, t.p_conf_champ, t.p_playoffs, t.proj_w]),
+        hovertemplate: "%{customdata[0]}<br>Title %{x:.1%}<br>Win conference %{customdata[1]:.1%}<br>Playoffs %{customdata[2]:.1%}<br>Projected wins %{customdata[3]:.1f}<extra></extra>",
+      },
+    ],
+    layoutExtras({
+      xaxis: { title: "Probability of winning the 2026–27 championship", tickformat: ".0%", rangemode: "tozero", zeroline: false },
+      yaxis: { automargin: true },
+      margin: { l: 56, r: 56, t: 10, b: 52 },
+      showlegend: false,
+    }),
+    PLOT_CONFIG
+  );
+  $("#forecast-caption").textContent =
+    `Most common Finals in the simulations: ${by[f.finals_pair.east].name} vs ${by[f.finals_pair.west].name} (${fmtPct(f.finals_pair.p)}). ` +
+    `Projected records are simulation averages over ${fc.n_games_simulated.toLocaleString()} remaining games; "Now" is the record through ${fmtDate(DATA.meta.last_completed_date)}. ` +
+    `Limits: only about ten games per team have been played, so these numbers will move a lot; injuries and trades are not modelled; ties are broken by point differential; last-10 ratings are held at current values; ${fc.n_filler_games} NBA Cup-dependent games are filled with random same-conference opponents. This is a course exercise, not betting advice.`;
+}
+
 function fmtMetric(v, fmt) {
   if (fmt === "pct") return (v * 100).toFixed(1) + "%";
   if (fmt === "pd") return (v > 0 ? "+" : "") + v.toFixed(1);
@@ -654,21 +852,16 @@ function renderMetrics() {
   const cur = DATA.metrics.current;
   const row = (name, m) =>
     `<tr><th scope="row">${name}</th><td>${m.accuracy.toFixed(3)}</td><td>${m.log_loss.toFixed(3)}</td><td>${m.brier.toFixed(3)}</td></tr>`;
+  const body = (block) =>
+    Object.entries(DATA.model_labels)
+      .map(([k, name]) => row(name.replace(" (p = train home-win rate)", ""), block[k]))
+      .join("");
+  const head = `<thead><tr><th>Model</th><th>Accuracy</th><th>Log-loss</th><th>Brier</th></tr></thead>`;
   let html = `<table><caption>Held-out test season, 2025–26 (${test.logistic_regression.n} games)</caption>
-    <thead><tr><th>Model</th><th>Accuracy</th><th>Log-loss</th><th>Brier</th></tr></thead><tbody>
-    ${row("Always home", test.baseline_home)}
-    ${row("Higher pre-game win %", test.baseline_winpct)}
-    ${row("Logistic regression (L2)", test.logistic_regression)}
-    ${row("Random forest", test.random_forest)}
-    </tbody></table>`;
+    ${head}<tbody>${body(test)}</tbody></table>`;
   if (cur) {
     html += `<table style="margin-top:16px"><caption>Forward application, completed 2026–27 games (${cur.logistic_regression.n} games)</caption>
-      <thead><tr><th>Model</th><th>Accuracy</th><th>Log-loss</th><th>Brier</th></tr></thead><tbody>
-      ${row("Always home", cur.baseline_home)}
-      ${row("Higher pre-game win %", cur.baseline_winpct)}
-      ${row("Logistic regression (L2)", cur.logistic_regression)}
-      ${row("Random forest", cur.random_forest)}
-      </tbody></table>`;
+      ${head}<tbody>${body(cur)}</tbody></table>`;
   }
   $("#metrics-inline").innerHTML = html;
 }
@@ -677,7 +870,7 @@ function renderFooter() {
   const m = DATA.meta;
   $("#footer").innerHTML = `
     <p><strong>Data:</strong> ${escapeHtml(m.data_source)}. Regular-season game logs for 2021–22 through 2026–27, plus the official 2026–27 schedule.</p>
-    <p><strong>Model:</strong> Default is L2 logistic regression (C = ${m.lr_C}), trained on ${m.seasons_trained[0]} to ${m.seasons_trained[m.seasons_trained.length - 1]} (${m.n_train.toLocaleString()} games). A random forest (${m.rf_params.n_estimators} trees, max depth ${m.rf_params.max_depth}) is available as a comparison. Test season: ${m.test_season}.</p>
+    <p><strong>Model:</strong> Default is a Lasso (L1) logistic regression (C = ${m.lr_C}, ${m.n_features_kept} of ${DATA.features.length} features kept), with hyperparameters from rolling-origin cross-validation, trained on ${m.seasons_trained[0]} to ${m.seasons_trained[m.seasons_trained.length - 1]} (${m.n_train.toLocaleString()} games). A random forest (${m.rf_params.n_estimators} trees, max depth ${m.rf_params.max_depth}) is available as a comparison. Test season: ${m.test_season}.</p>
     <p>${escapeHtml(m.disclaimer)}</p>
     <p>${escapeHtml(m.course)} · ${escapeHtml(m.institution)}.</p>`;
 }
@@ -710,8 +903,10 @@ function bind() {
     })
   );
   window.addEventListener("resize", () => {
-    const el = document.getElementById("chart");
-    if (el && el.data) Plotly.Plots.resize(el);
+    for (const id of ["chart", "title-chart"]) {
+      const el = document.getElementById(id);
+      if (el && el.data) Plotly.Plots.resize(el);
+    }
   });
 }
 
@@ -727,6 +922,7 @@ async function init() {
   renderUpcoming();
   renderMetrics();
   renderFooter();
+  renderForecast();
   bind();
   const firstSched = (DATA.upcoming || []).find((g) => g.status === 1) || (DATA.upcoming || [])[0];
   if (firstSched) {

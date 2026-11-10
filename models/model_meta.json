@@ -49,10 +49,34 @@
     "home_prior_games": "Home games already played",
     "away_prior_games": "Away games already played"
   },
-  "lr_C": 0.1,
+  "lr_C": 0.03,
+  "lr_penalty": "l1",
+  "selected_hyperparameters": {
+    "logistic_regression": {
+      "C": 0.03
+    },
+    "logistic_l2": {
+      "C": 0.03
+    },
+    "pca_logistic": {
+      "n_components": 10
+    },
+    "decision_tree": {
+      "max_depth": 4,
+      "min_samples_leaf": 200
+    },
+    "knn": {
+      "k": 151
+    },
+    "naive_bayes": {},
+    "random_forest": {
+      "max_depth": 8,
+      "min_samples_leaf": 25
+    }
+  },
   "rf_params": {
     "n_estimators": 400,
-    "max_depth": 10,
+    "max_depth": 8,
     "min_samples_leaf": 25,
     "max_features": "sqrt",
     "random_state": 2233

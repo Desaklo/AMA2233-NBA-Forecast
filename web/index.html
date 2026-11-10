@@ -17,7 +17,7 @@
       <div>
         <p class="eyebrow">AMA2233 · Data Analytics and Visualization</p>
         <h1>NBA Match Outcome Forecast</h1>
-        <p class="tagline">Pre-game win probabilities from a leakage-free logistic model, with a random-forest comparison.</p>
+        <p class="tagline">Pre-game win probabilities from a leakage-free Lasso logistic model, a season simulation with playoff odds, and a comparison of course models.</p>
       </div>
       <div class="header-meta" id="header-meta"></div>
     </div>
@@ -104,11 +104,26 @@
         <button type="button" class="tab" role="tab" aria-selected="false" data-chart="cal">Calibration</button>
         <button type="button" class="tab" role="tab" aria-selected="false" data-chart="traj">Season trajectory</button>
         <button type="button" class="tab" role="tab" aria-selected="false" data-chart="cmp">Team comparison</button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-chart="models">Model comparison</button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-chart="cm">Confusion matrix</button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-chart="odds">Odds ratios</button>
       </div>
       <div class="chart-sub" id="chart-sub" hidden></div>
       <div id="chart" class="chart" role="img" aria-label="Selected chart"></div>
       <div id="form-strip" class="form-strip" hidden></div>
       <p class="muted chart-caption" id="chart-caption"></p>
+    </section>
+
+    <section class="panel forecast-panel" aria-labelledby="forecast-heading">
+      <div class="panel-head">
+        <h2 id="forecast-heading">2026–27 season forecast</h2>
+        <p class="muted" id="forecast-note"></p>
+      </div>
+      <div class="fav-cards" id="fav-cards"></div>
+      <div class="conf-tables" id="conf-tables"></div>
+      <h3 class="forecast-sub">Championship odds</h3>
+      <div id="title-chart" class="chart title-chart" role="img" aria-label="Championship probability by team"></div>
+      <p class="muted chart-caption" id="forecast-caption"></p>
     </section>
 
     <section class="panel methods" aria-labelledby="methods-heading">
@@ -120,11 +135,11 @@
         </div>
         <div>
           <h3>Temporal split</h3>
-          <p>Models are trained on the 2021–22 through 2024–25 regular seasons (4,920 games). 2025–26 is held out for testing. 2026–27 games are a forward application and were not used to fit or tune the models.</p>
+          <p>Models are trained on the 2021–22 through 2024–25 regular seasons (4,920 games). 2025–26 is held out for testing and is never used to choose hyperparameters. 2026–27 games are a forward application and were not used to fit or tune the models.</p>
         </div>
         <div>
-          <h3>Two models</h3>
-          <p>Logistic regression (L2-regularized, the default) is the interpretable linear model from the course syllabus. A random forest is shown as a comparison. Both are scored with accuracy, log-loss, and the Brier score against home-court and win-percentage baselines.</p>
+          <h3>Models and cross-validation</h3>
+          <p>The default is a Lasso (L1) logistic regression: it drops redundant, highly correlated features, so every remaining coefficient has a sensible sign. L2 logistic regression, PCA + logistic regression, a decision tree, k-NN, Gaussian Naive Bayes and a random forest are trained on the same split. Hyperparameters come from rolling-origin cross-validation (train on seasons up to k, validate on season k+1).</p>
         </div>
         <div>
           <h3>What is missing</h3>
